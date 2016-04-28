@@ -112,6 +112,41 @@ classdef PendulumPlant < SecondOrderSystem
       end
     end
     
+    function [utraj,xtraj] = iLQRswingUpTrajectory(obj)
+        x0 = [0; 0];
+        xg = [pi; 0];
+        tf = 4;
+        N = 21;
+        
+        traj_opt = iLQRTrajectoryOptimization(obj,N,tf);
+        traj_opt = traj_opt.addRunningCost(@cost);
+        traj_opt = traj_opt.addFinalCost(@finalCost);
+        traj_opt = traj_opt.addInputLimits(-3,3);
+        traj_init.x = PPTrajectory(foh([0,tf],[double(x0),double(x0)]));
+        traj_init.u = PPTrajectory(foh(linspace(0,tf*(1-1/(N-1)),N-1), 0.1*randn(1,N-1)));
+        [xtraj,utraj] = traj_opt.solveTraj(tf,traj_init);
+        
+        function [g,dg,d2g] = cost(dt,x,u)
+            Q = .1*eye(2);
+            R = 1;
+            g = 0.5*(x-xg)'*Q*(x-xg) + 0.5*u'*R*u;
+            
+            if (nargout>1)
+                dg = [0,(x-xg)'*Q,u'*R];
+                d2g = blkdiag(0, Q, R);
+            end
+        end
+        
+        function [h,dh,d2h] = finalCost(tf,x)
+            Qf = diag([10 10]);
+            h = 0.5*(x-xg)'*Qf*(x-xg);
+            if (nargout>1)
+                dh = [0, (x-xg)'*Qf];
+                d2h = blkdiag(0, Qf);
+            end
+        end
+    end
+    
     function c=trajectorySwingUpAndBalance(obj)
       [ti,Vf] = balanceLQR(obj);
       Vf = 5*Vf;  % artificially prune, since ROA is solved without input limits
