@@ -1,15 +1,19 @@
 classdef iLQRTrajectoryOptimization < IndirectTrajectoryOptimization
-  %ILQRTRAJECTORYOPTIMIZATION Performs trajectory optimization with the
-  % Itterative LQR Algorithm.
-  %
-  % Generally considers cost functions of the form:
-  % int(f(x(t),u(t)) + g(xf)
-  %
-  % This class assumes that there are a fixed number (N) time steps of
-  % equal length (h).
-  %
-  % This implementation assumes that all constraints and costs are
-  % time-invariant.
+%ILQRTRAJECTORYOPTIMIZATION Performs trajectory optimization with the
+% Itterative LQR Algorithm.
+%
+% Generally considers cost functions of the form:
+% int(f(x(t),u(t)) + g(xf) s.t. lb <= u(t) <= ub
+%
+% This class assumes that there are a fixed number (N) time steps of
+% equal length (h).
+%
+% This implementation assumes that all constraints and costs are
+% time-invariant.
+%
+% Adapted from:
+% Y. Tassa, N. Mansard, and E. Todorov, "Control-Limited Differential
+% Dynamic Programming", ICRA 2014
   
     properties (Constant)
         EULER = 1;
