@@ -5,10 +5,11 @@ pd = PendulumPlant;
 pv = PendulumVisualizer();
 [utraj,xtraj] = iLQRswingUpTrajectory(pd);
 
-if (0) % open-loop playback
-  sys = cascade(utraj,pd);
-  xtraj=simulate(sys,utraj.tspan,[0;0]);
-end
+uhist = utraj.eval(0:.1:4);
+
+figure(1);
+plot(uhist);
+
 pv.playback(xtraj);
 
 end

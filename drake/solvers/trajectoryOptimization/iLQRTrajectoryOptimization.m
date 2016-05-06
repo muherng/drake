@@ -209,29 +209,28 @@ classdef iLQRTrajectoryOptimization < IndirectTrajectoryOptimization
                     % No bounds - solve for du and K in closed form
                     
                     % Add regularization and check for positive definiteness
-                    [Suu,error] = chol(Huu + lambda*eye(m));
+                    [Luu,error] = chol(Huu + lambda*eye(m),'lower');
                     if error
                         break;
                     end
                 
-                    duK = Suu\(Suu'\[gu Hux]);
+                    duK = Luu'\(Luu\[gu Hux]);
                     du(:,k) = -duK(:,1);
                     K(:,:,k) = duK(:,2:end);
                 else
                     % Solve QP to find du and K
-                    lower = obj.input_lower_bound - u(:,k);
-                    upper = obj.input_upper_bound - u(:,k);
+                    lb = obj.input_lower_bound - u(:,k);
+                    ub = obj.input_upper_bound - u(:,k);
                     
-                    [du(:,k),free,Suu,error] = obj.boxQP(Huu+lambda*eye(m),gu,lower,upper,du(:,k));
+                    
+                    [du(:,k),Pfree,Lfree,error] = boxQP(Huu+lambda*eye(m),gu,lb,ub,du(:,k));
                     if error
                         break;
                     end
                     
                     K(:,:,k) = zeros(m,n);
-                    if any(free)
-                        Kfree = Suu\(Suu'\Hux(free,:));
-                        K(free,:,k) = Kfree;
-                    end
+                    Kfree = Lfree'\(Lfree\(Pfree*Hux));
+                    K(:,:,k) = Pfree'*Kfree;
                 end
                 
                 %Calculate new cost-to-go function
@@ -253,128 +252,6 @@ classdef iLQRTrajectoryOptimization < IndirectTrajectoryOptimization
                 xnew(:,k+1) = obj.integrator(xnew(:,k),unew(:,k),h(k));
             end
             Jnew = Jnew + obj.final_cost(t(N), xnew(:,N));
-        end
-        
-        function [x,free,Hfree,error] = boxQP(obj,H,g,lower,upper,x0)
-            % Minimize 0.5*x'*H*x + x'*g  s.t. lower<=x<=upper
-            %
-            %  inputs:
-            %     H            - positive definite matrix   (n * n)
-            %     g            - bias vector                (n)
-            %     lower        - lower bounds               (n)
-            %     upper        - upper bounds               (n)
-            %
-            %   optional inputs:
-            %     x0           - initial state              (n)
-            %
-            %  outputs:
-            %     x            - solution                   (n)
-            %     Hfree        - subspace cholesky factor   (n_free * n_free)
-            %     free         - set of free dimensions     (n)
-            
-            n        = size(H,1);
-            clamped  = false(n,1);
-            free     = true(n,1);
-            nfactor  = 0;
-            Hfree    = zeros(n);
-            clamp    = @(x) max(lower, min(upper, x));
-            error = 0;
-            
-            % initial state
-            if nargin > 5 && numel(x0) == n
-                x = clamp(x0(:));
-            else
-                x = clamp(zeros(n,1));
-            end
-            x(~isfinite(x)) = 0;
-            
-            % Algorithm parameters
-            maxIter        = 100;       % maximum number of iterations
-            minGrad        = 1e-8;      % minimum norm of non-fixed gradient
-            minRelImprove  = 1e-8;      % minimum relative improvement
-            stepDec        = 0.6;       % factor for decreasing stepsize
-            minStep        = 1e-16;     % minimal stepsize for linesearch
-            Armijo         = 0.1;   	% Armijo parameter (fraction of linear improvement required)
-            
-            % initial objective value
-            value    = x'*g + 0.5*x'*H*x;
-            
-            % main loop
-            for iter = 1:maxIter
-                
-                % get gradient
-                grad = g + H*x;
-                
-                % find clamped dimensions
-                old_clamped                     = clamped;
-                clamped                         = false(n,1);
-                clamped((x == lower)&(grad>0))  = true;
-                clamped((x == upper)&(grad<0))  = true;
-                free                            = ~clamped;
-                
-                % check for all clamped
-                if all(clamped)
-                    break;
-                end
-                
-                % factorize if clamped has changed
-                if iter == 1
-                    factorize = true;
-                else
-                    factorize = any(old_clamped ~= clamped);
-                end
-                
-                if factorize
-                    [Hfree, indef]  = chol(H(free,free));
-                    if indef
-                        error = 1;
-                        break
-                    end
-                    nfactor = nfactor + 1;
-                end
-                
-                % check gradient norm
-                gnorm  = norm(grad(free));
-                if gnorm < minGrad
-                    break;
-                end
-                
-                % get search direction
-                grad_clamped   = g  + H*(x.*clamped);
-                search         = zeros(n,1);
-                search(free)   = -Hfree\(Hfree'\grad_clamped(free)) - x(free);
-                
-                % check for descent direction
-                sdotg          = sum(search.*grad);
-                if sdotg >= 0 % (should not happen)
-                    error = 1;
-                    break
-                end
-                
-                % armijo linesearch
-                step  = 1;
-                nstep = 0;
-                xc    = clamp(x+step*search);
-                vc    = xc'*g + 0.5*xc'*H*xc;
-                while (vc - value)/(step*sdotg) < Armijo
-                    step  = step*stepDec;
-                    nstep = nstep+1;
-                    xc    = clamp(x+step*search);
-                    vc    = xc'*g + 0.5*xc'*H*xc;
-                    if step<minStep
-                        break
-                    end
-                end
-                
-                % check relative improvement
-                if(value - vc < minRelImprove*abs(value) )
-                    x = xc;
-                    break;
-                else
-                    value = vc;
-                    x = xc;
-                end
-            end
         end
         
         % All of these integrators integrate Jacobians as well as states
