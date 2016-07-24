@@ -14,6 +14,7 @@ warning('off','Drake:RigidBodyManipulator:UnsupportedContactPoints')
 warning('off','Drake:RigidBodyManipulator:UnsupportedJointLimits')
 warning('off','Drake:RigidBodyManipulator:UnsupportedVelocityLimits')
 
+options.update_convex = true;
 options.floating = true;
 options.dt = 0.001;
 options.ignore_effort_limits = false;

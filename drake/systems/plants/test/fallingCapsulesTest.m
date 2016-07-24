@@ -2,6 +2,7 @@ function fallingCapsulesTest
 
 options.floating = 'quat';
 options.terrain = RigidBodyFlatTerrain();
+options.update_convex = true;
 N = 5;
 p = TimeSteppingRigidBodyManipulator('Capsule.urdf',.001,options);
 for i=2:N,

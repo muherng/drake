@@ -322,20 +322,22 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         I = eye(num_c*num_d);
         V_cell = cell(1,num_active);
         v_min = zeros(length(phi),1);
-        w_active = zeros(num_active*num_d,1);
+        %added the + nl here
+        w_active = zeros(num_active*num_d + nL,1);
         for i=1:length(phi)
-          if i<=num_active
-            % is a contact point
-            idx_beta = active(i):num_c:num_c*num_d;
-            try
-            V_cell{i} = V*I(idx_beta,:)'; % basis vectors for ith contact
-            catch
-              keyboard
+            if i<=num_active
+                % is a contact point
+                idx_beta = active(i):num_c:num_c*num_d;
+                try
+                    V_cell{i} = V*I(idx_beta,:)'; % basis vectors for ith contact
+                catch
+                    keyboard
+                end
+                %          end
+                w_active((i-1)*num_d+(1:num_d)) = w((active(i)-1)*num_d+(1:num_d));
             end
-          end
-          w_active((i-1)*num_d+(1:num_d)) = w((active(i)-1)*num_d+(1:num_d));
-          v_min(i) =-phi(i)/h;
-%           v_min(i) = 0;
+            v_min(i) =-phi(i)/h;
+            %           v_min(i) = 0;
         end
         V = blkdiag(V_cell{:},eye(nL));
                 
@@ -357,7 +359,7 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         R = diag(r(:));
 
         % joint limit smoothing matrix
-        W_min = 1e-3; 
+        W_min = 1e-3;
         W_max = 1e3;
         w = zeros(nL,1);
         w(phiL>=obj.phi_max) = W_max;
@@ -378,57 +380,96 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         phiL_pos = phiL;
         phiL_pos(phiL<0)=0;
         lambda_ub(num_beta+(1:nL)) = max(0.01, scale_fact*(obj.phi_max./phiL_pos - 1.0));
-                
+        
         try
-          Q = 0.5*V'*(A+R)*V + 1e-8*eye(num_params);
+            Q = 0.5*V'*(A+R)*V + 1e-8*eye(num_params);
         catch
-          keyboard
+            keyboard
         end
         % N*(A*z + c) - v_min \ge 0
         Ain = zeros(num_active+nL,num_params);
         bin = zeros(num_active+nL,1);
         for i=1:num_active
-          idx = (i-1)*dim + (1:dim);
-          Ain(i,:) = normal(:,i)'*A(idx,:)*V;
-          bin(i) = v_min(i) - normal(:,i)'*c(idx);
+            idx = (i-1)*dim + (1:dim);
+            Ain(i,:) = normal(:,i)'*A(idx,:)*V;
+            bin(i) = v_min(i) - normal(:,i)'*c(idx);
         end
         for i=1:nL
-          idx = num_active*dim + i;
-          Ain(i+num_active,:) = A(idx,:)*V;
-          bin(i+num_active) = v_min(i+num_active) - c(idx);
+            idx = num_active*dim + i;
+            Ain(i+num_active,:) = A(idx,:)*V;
+            bin(i+num_active) = v_min(i+num_active) - c(idx);
         end
-
-%         Ain = 0*Ain; % TMP DEBUG
-%         bin = 0*bin; % TMP DEBUG
+        
+        %         Ain = 0*Ain; % TMP DEBUG
+        %         bin = 0*bin; % TMP DEBUG
         
         Ain_fqp = full([-Ain; -eye(num_params); eye(num_params)]);
         bin_fqp = [-bin; zeros(num_params,1); lambda_ub];
- 
-%         [result_qp,info_fqp] = fastQPmex({Q},V'*c,Ain_fqp,bin_fqp,[],[],obj.LCP_cache.data.fastqp_active_set);
         
-        if 1 % info_fqp<0
-%           disp('calling gurobi');
-          model.LCP_cache.data.fastqp_active_set = [];
-          gurobi_options.outputflag = 0; % verbose flag
-          gurobi_options.method = 1; % -1=automatic, 0=primal simplex, 1=dual simplex, 2=barrier
+        %         [result_qp,info_fqp] = fastQPmex({Q},V'*c,Ain_fqp,bin_fqp,[],[],obj.LCP_cache.data.fastqp_active_set);
+        
+        interior_point = true;
+        
+        if ~interior_point % info_fqp<0
+            %           disp('calling gurobi');
+            model.LCP_cache.data.fastqp_active_set = [];
+            gurobi_options.outputflag = 0; % verbose flag
+            gurobi_options.method = 1; % -1=automatic, 0=primal simplex, 1=dual simplex, 2=barrier
+            
+            try
+                model.Q = sparse(Q);
+                model.obj = V'*c;
+                model.A = sparse(Ain);
+                model.rhs = bin;
+                model.sense = repmat('>',length(bin),1);
+                model.lb = zeros(num_params,1);
+                model.ub = lambda_ub;
+                result = gurobi(model,gurobi_options);
+                result_qp = result.x;
+            catch
+                keyboard
+            end;
+            f = V*(result_qp + w_active);
+            active_set = find(abs(Ain_fqp*result_qp - bin_fqp)<1e-6);
+            obj.LCP_cache.data.fastqp_active_set = active_set;
+        else  
+            %my own code
+            x0 = 1*ones(1,size(Q,2));
+            fun = @(x) x*Q*x' + (V'*c)'*x';
+            A = -1*sparse(Ain);
+            b = -bin;
+            Aeq = zeros(1,size(Q,2));
+            beq = 0;
+            lb = zeros(num_params,1);
+            ub = lambda_ub;
+            nonlcon = [];
+            options = optimset('Display', 'off','Algorithm','interior-point');
+            
+%             if Ain_fqp*x0' <= bin_fqp
+                %disp('Custom Interior Point');
+                %[result_ip,~] = InteriorPoints(Q,-Ain,-bin,V'*c, ub, lb, x0'); 
+                [result_ip,~,feasible] = InteriorPoints(Q,Ain,bin,V'*c, ub, lb, x0'); 
+                f = V*(result_ip + w_active);
+                %result_fmincon = fmincon(fun,x0,A,b,Aeq,beq,lb,ub,nonlcon,options);
+                %disp('fmincon objective');                
+                %disp(fun(result_fmincon));
+%                 if fun(result_ip') - fun(result_fmincon) > 0.001
+%                     disp('Disparity');
+%                     disp(feasible);
+%                     disp(isempty(find((Ain_fqp*x0' <= bin_fqp) == 0)));
+%                     disp(fun(result_ip') - fun(result_fmincon));
+%                 end
+%                 else
+%                     disp('ALL GOOD');
+%                 end
+                
+%             else 
+%                 %disp('fmincon interior point');
+%                 result_ip = fmincon(fun,x0,A,b,Aeq,beq,lb,ub,nonlcon,options);
+%                 f = V*(result_ip' + w_active);
+%             end
 
-          try
-            model.Q = sparse(Q);
-            model.obj = V'*c;
-            model.A = sparse(Ain);
-            model.rhs = bin;
-            model.sense = repmat('>',length(bin),1);
-            model.lb = zeros(num_params,1);
-            model.ub = lambda_ub;
-            result = gurobi(model,gurobi_options);
-            result_qp = result.x;
-          catch
-            keyboard
-          end;
         end
-        f = V*(result_qp + w_active);
-        active_set = find(abs(Ain_fqp*result_qp - bin_fqp)<1e-6);
-        obj.LCP_cache.data.fastqp_active_set = active_set;
 
 %         vis=obj.constructVisualizer;
 %         figure(25)

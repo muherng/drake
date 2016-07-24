@@ -1,9 +1,9 @@
 function fallingBrickLCP
 
-options.floating = 'quat';
+options.floating = true;
 options.terrain = RigidBodyFlatTerrain();
 options.update_convex = true;
-% options.ignore_self_collisions = true;
+options.ignore_self_collisions = true;
 % options.use_bullet = false;
 s = 'FallingBrickContactPoints.urdf';
 % s = 'FallingBrickBetterCollisionGeometry.urdf';
