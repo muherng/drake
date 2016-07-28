@@ -16,15 +16,7 @@ using namespace std;
 
 
 void fastIP(MatrixXd& Q, VectorXd& c, MatrixXd& A, VectorXd& b, VectorXd& ub, VectorXd& lb, VectorXd& x, double* output)
-{
-//     cout << c << endl;
-//     cout << A<< endl;
-//     cout << b << endl;
-//     cout << ub << endl;
-//     cout << lb << endl;
-//     cout << x << endl;
-    
-    
+{   
 //Newton's method parameters
     int num_params = A.cols();
     MatrixXd A_full(A.rows() + 2*num_params,A.cols());
@@ -35,10 +27,10 @@ void fastIP(MatrixXd& Q, VectorXd& c, MatrixXd& A, VectorXd& b, VectorXd& ub, Ve
     b_full << b,
             lb,
             -1*ub;
-    cout << "display A full" << endl;
-    cout << A_full << endl;
-    int maxIter = 3;
-    int newtonIter = 5;
+   // cout << "display A full" << endl;
+   // cout << A_full << endl;
+    int maxIter = 3; // was 3
+    int newtonIter = 3; //was 5
     double alpha = 0.01;
     double beta = 0.5;
             
@@ -54,6 +46,7 @@ void fastIP(MatrixXd& Q, VectorXd& c, MatrixXd& A, VectorXd& b, VectorXd& ub, Ve
      
 // Solve the program using Interior Point method with Newton + backtracking at each step
      int m = x.rows();
+     int disp = 0;
      for (int j = 0; j < maxIter; j++)
      {
          feasible = NewtonIP(Q,A_full,b_full,c,T,x,maxIter,thresholdIP,alpha,beta,newtonIter,f);
@@ -63,6 +56,12 @@ void fastIP(MatrixXd& Q, VectorXd& c, MatrixXd& A, VectorXd& b, VectorXd& ub, Ve
          } else
          {
              T = (1/re)*T;
+             disp = 1;
+         }
+         //cout << "SOLUTION TO ITERATION" << endl;
+         if (disp)
+         {
+            //cout << x << endl;
          }
          //x0 = x.block(0,j,m,1);
      }

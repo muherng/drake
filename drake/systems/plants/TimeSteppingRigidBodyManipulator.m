@@ -448,17 +448,19 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
 %             if Ain_fqp*x0' <= bin_fqp
                 %disp('Custom Interior Point');
                 %[result_ip,~] = InteriorPoints(Q,-Ain,-bin,V'*c, ub, lb, x0'); 
-                [result_ip,~,feasible] = InteriorPoints(Q,Ain,bin,V'*c, ub, lb, x0'); 
+                %disp('matlab version');
+                %[result_ip,~,feasible] = InteriorPoints(Q,Ain,bin,V'*c, ub, lb, x0');
+                %disp('c++ version');
+                result_ip = fastIPmex(Q,V'*c,Ain,bin,ub,lb,x0');
                 f = V*(result_ip + w_active);
                 %result_fmincon = fmincon(fun,x0,A,b,Aeq,beq,lb,ub,nonlcon,options);
                 %disp('fmincon objective');                
                 %disp(fun(result_fmincon));
 %                 if fun(result_ip') - fun(result_fmincon) > 0.001
 %                     disp('Disparity');
-%                     disp(feasible);
-%                     disp(isempty(find((Ain_fqp*x0' <= bin_fqp) == 0)));
+%                     %disp(feasible);
+%                     disp(isempty(find(Ain_fqp*x0' <= bin_fqp)));
 %                     disp(fun(result_ip') - fun(result_fmincon));
-%                 end
 %                 else
 %                     disp('ALL GOOD');
 %                 end

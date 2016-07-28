@@ -22,11 +22,6 @@ using namespace std;
  */
 
 
-void timestwo(double y[], double x[])
-{
-    y[0] = 2.0*x[0];
-}
-
 void mexFunction( int nlhs, mxArray *plhs[],
         int nrhs, const mxArray *prhs[] )
 {
@@ -78,7 +73,6 @@ void mexFunction( int nlhs, mxArray *plhs[],
         m = mxGetM(prhs[arg]);
         n = mxGetN(prhs[arg]);
         c[0] = Map<MatrixXd>(mxGetPr(prhs[arg]), m * n, 1);
-        cout << c[0] << endl;
         arg++;
     }
      
@@ -88,7 +82,6 @@ void mexFunction( int nlhs, mxArray *plhs[],
         m = mxGetM(prhs[arg]);
         n = mxGetN(prhs[arg]);
         A[0] = Map<MatrixXd>(mxGetPr(prhs[arg]), m, n);
-        cout << A[0] << endl;
         arg++;
     }
     
