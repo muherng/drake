@@ -466,7 +466,7 @@ classdef NonlinearProgram
 %         obj.cost_xind_cell = [obj.cost_xind_cell,{xind(cnstr.jCvar)}];
       obj.jFvar = unique([obj.jFvar;xind_vec(cnstr.jCvar)]);
       obj.iFfun = ones(length(obj.jFvar),1);
-    end
+   end
 
     function obj = addQuadraticCost(obj,Q,x_desired,xind)
       % helper function for the very common case of adding the objective

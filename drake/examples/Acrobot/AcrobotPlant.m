@@ -110,7 +110,7 @@ classdef AcrobotPlant < Manipulator
       tf0 = 4;
       
       N = 21;
-      prog = DircolTrajectoryOptimization(obj,N,[2 6]);
+      prog = DirtranTrajectoryOptimization(obj,N,[2 6]);
       prog = prog.addStateConstraint(ConstantConstraint(x0),1);
       prog = prog.addStateConstraint(ConstantConstraint(xf),N);
       prog = prog.addRunningCost(@cost);
@@ -124,6 +124,21 @@ classdef AcrobotPlant < Manipulator
         toc
         if info==1, break; end
       end
+      
+      
+%       function g = cost(dt,x,u)
+%          R = 1;
+%          g = sum((R*u).*u,1);
+%          return;
+%       end
+      
+      % contact cost
+%       function [g] = cost(dt,x)
+%         R = 1;
+%         %TODO compute u 
+%         g = sum((R*u).*u,1);
+%       end
+      % end contact cost
 
       function [g,dg] = cost(dt,x,u)
         R = 1;
@@ -146,7 +161,8 @@ classdef AcrobotPlant < Manipulator
           dg = [dgddt,dgdx,dgdu];
         end
       end
-      
+%       
+%       %final cost can remain the same, no u dependence
       function [h,dh] = finalCost(t,x)
         h = t;
         dh = [1,zeros(1,size(x,1))];

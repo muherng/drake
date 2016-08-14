@@ -237,6 +237,237 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
     end
     
     
+    function grad = grad_log(A,b,x)
+        [m,n] = size(A);
+        
+        %quadratic coefficients
+        q = -10; %Parameter set in paper
+        s0 = -1/q;
+        C = [[2,0,0]; [2*s0, 1, 0];[0, 0, 1]]; %quadratic, linear, and constant term
+        r = [1/(s0^2);-1/s0;-log(s0)];
+        a = C\r;
+        
+        quad = 1; %need quadratic tail
+        if isempty(find(A*x <= b))
+            quad = 0;
+        else
+            quad = 1;  %but I don't think this needs to be done.
+        end
+        
+        if quad
+            s = A*x - b;
+            quad_log = ~(s <= s0);
+            %binary vector, 1 for log evaluation, 0 for quadratic
+            Af = A(find(quad_log),:);
+            Au = A(find(~quad_log),:);
+            bf = b(find(quad_log));
+            bu = b(find(~quad_log));
+            d = 1./(Af*x - bf);
+            grad = - Af'*d + (2*a(1)*diag(Au*x-bu)*Au + a(2)*Au)'*ones(size(find(~quad_log)));
+        else
+            d = 1./(A*x - b);
+            grad = T*c - A'*d;
+        end
+    end
+    
+    function u = inverseDynamics(obj,h0,h1,h2,x0,x1,x2)
+        
+        if obj.twoD
+            num_d = 2;
+        else
+            num_d = 4;
+        end
+        dim = 3;
+        
+        num_q = obj.manip.getNumPositions;
+        %v=x(num_q+(1:obj.manip.getNumVelocities));
+        
+        x0_dot = (x1 - x0)/(h1 - h0);
+        x1_dot = (x2 - x1)/(h2 - h1);
+        h = h1 - h0;
+        
+        kinsol = doKinematics(obj, x0);
+        vToqdot = obj.manip.vToqdot(kinsol);
+        
+        [H,C,B] = manipulatorDynamics(obj.manip,x0,x0_dot);
+        
+        [phiC,normal,V,n,xA,xB,idxA,idxB] = getContactTerms(obj,x0,kinsol);
+        num_c = length(phiC);
+        
+        w = zeros(num_c*num_d,1);
+        
+        active = find(phiC + h*n*vToqdot*x0_dot < obj.active_threshold);
+        phiC = phiC(active);
+        normal = normal(:,active);
+        
+        Apts = xA(:,active);
+        Bpts = xB(:,active);
+        Aidx = idxA(active);
+        Bidx = idxB(active);
+        
+        
+        JA = [];
+        world_pts = [];
+        for i=1:length(Aidx)
+            [pp,J_] = forwardKin(obj.manip,kinsol,Aidx(i),Apts(:,i));
+            JA = [JA; J_];
+            world_pts = [world_pts, pp];
+        end
+        
+        JB = [];
+        for i=1:length(Bidx)
+            [~,J_] = forwardKin(obj.manip,kinsol,Bidx(i),Bpts(:,i));
+            JB = [JB; J_];
+        end
+        
+        J = JA-JB;
+        
+        [phiL,JL] = obj.manip.jointLimitConstraints(x0);
+        possible_limit_indices = (phiL + h*JL*vToqdot*x0_dot) < obj.active_threshold;
+        nL = sum(possible_limit_indices);
+        JL = JL(possible_limit_indices,:);
+        
+        J = [J;JL];
+        phiL = phiL(possible_limit_indices);
+        phi = [phiC;phiL];
+        x0_ddot = (x1_dot - x0_dot)/(h1 - h0);
+        
+        if isempty(active)
+            %you will have to block decompose the dynamics as Scott said
+            u = B/(H*x0_ddot + C);
+        else
+            
+            
+            %you need to compute
+            
+            num_active = length(active);
+            num_beta = num_active*num_d; % coefficients for friction poly
+            
+            V = horzcat(V{:});
+            I = eye(num_c*num_d);
+            V_cell = cell(1,num_active);
+            v_min = zeros(length(phi),1);
+            %added the + nl here
+            w_active = zeros(num_active*num_d + nL,1);
+            for i=1:length(phi)
+                if i<=num_active
+                    % is a contact point
+                    idx_beta = active(i):num_c:num_c*num_d;
+                    try
+                        V_cell{i} = V*I(idx_beta,:)'; % basis vectors for ith contact
+                    catch
+                        keyboard
+                    end
+                    %          end
+                    w_active((i-1)*num_d+(1:num_d)) = w((active(i)-1)*num_d+(1:num_d));
+                end
+                v_min(i) =-phi(i)/h;
+                %           v_min(i) = 0;
+            end
+            V = blkdiag(V_cell{:},eye(nL));
+            
+            Hinv = inv(H);
+            A = J*vToqdot*Hinv*vToqdot'*J';
+            
+            %Here is computing v
+            v = J*vToqdot*x1_dot;
+            
+            % contact smoothing matrix
+            R_min = 1e-1;
+            R_max = 1e4;
+            r = zeros(num_active,1);
+            r(phiC>=obj.phi_max) = R_max;
+            r(phiC<=obj.contact_threshold) = R_min;
+            ind = (phiC > obj.contact_threshold) & (phiC < obj.phi_max);
+            y = (phiC(ind)-obj.contact_threshold)./(obj.phi_max - obj.contact_threshold)*2 - 1; % scale between -1,1
+            r(ind) = R_min + R_max./(1+exp(-10*y));
+            r = repmat(r,1,dim)';
+            %         R = diag([r(:)',r(:)']);
+            R = diag(r(:));
+            
+            % joint limit smoothing matrix
+            W_min = 1e-3;
+            W_max = 1e3;
+            w = zeros(nL,1);
+            w(phiL>=obj.phi_max) = W_max;
+            w(phiL<=obj.contact_threshold) = W_min;
+            ind = (phiL > obj.contact_threshold) & (phiL < obj.phi_max);
+            y = (phiL(ind)-obj.contact_threshold)./(obj.phi_max - obj.contact_threshold)*2 - 1; % scale between -1,1
+            w(ind) = W_min + W_max./(1+exp(-10*y));
+            W = diag(w(:));
+            
+            R = blkdiag(R,W);
+            
+            num_params = num_beta+nL;
+            lambda_ub = zeros(num_params,1);
+            scale_fact = 1e3;
+            phiC_pos = phiC;
+            phiC_pos(phiC<0)=0;
+            lambda_ub(1:num_beta) = repmat(max(0.01, scale_fact*(obj.phi_max./phiC_pos - 1.0)),1,num_d)';
+            phiL_pos = phiL;
+            phiL_pos(phiL<0)=0;
+            lambda_ub(num_beta+(1:nL)) = max(0.01, scale_fact*(obj.phi_max./phiL_pos - 1.0));
+            
+            try
+                Q = 0.5*V'*R*V + 1e-8*eye(num_params);
+            catch
+                keyboard
+            end
+            % N*(A*z + c) - v_min \ge 0
+            Ain = zeros(num_active+nL,num_params);
+            bin = zeros(num_active+nL,1);
+            for i=1:num_active
+                idx = (i-1)*dim + (1:dim);
+                Ain(i,:) = normal(:,i)'*V;
+                bin(i) = v_min(i);
+            end
+            for i=1:nL
+                idx = num_active*dim + i;
+                Ain(i+num_active,:) = V;
+                bin(i+num_active) = v_min(i+num_active);
+            end
+            
+            %         Ain = 0*Ain; % TMP DEBUG
+            %         bin = 0*bin; % TMP DEBUG
+            
+            %             Ain_fqp = full([-Ain; -eye(num_params); eye(num_params)]);
+            %             bin_fqp = [-bin; zeros(num_params,1); lambda_ub];
+            
+            Ain_fqp = full([-eye(num_params); eye(num_params)]);
+            bin_fqp = [ zeros(num_params,1); lambda_ub];
+            
+            
+            %takes gradient of the log barrier of constraints Ax > b
+            dv = grad_log(Ain,bin,v);
+            %note this inconsistency, c does not incorporate knowledge of
+            %pyramid basis change but is passed in as V'*c.  This is bad
+            %form because Q is passed in with bases changed.
+            %we've overloaded c, I think all notation should stick to the
+            %paper.  
+            k = V'*(v + A*dv);
+            
+            %Here's my understanding
+            %take every term in the paper, replace J with J*vToqdot and we
+            %obtain v and A and R (A and R are already done in update
+            %convex) Now V is the pyramid coordinate change.  It appears
+            %before every f.  Before and after on the Q, but only once for
+            %the c.
+            %V is pyramid basis change, v is next state velocity in contact
+            %coordinates.  
+            %my own code
+            f0 = 1*ones(1,size(Q,2));
+            lb = zeros(num_params,1);
+            ub = lambda_ub;
+            fastIPmex(Q,k,Ain,bin,ub,lb,f0');
+            f = V*(result_ip + w_active);
+            
+            %you're going to have to decompose this
+            u = B/(H*x0_ddot + C - vToqdot'*J'*f);
+        end
+        
+    end
+    
+    
    
     function [xdn,df] = updateConvex(obj,h,x,u,w)
       % this function implement an update based on Todorov 2011, where
@@ -518,6 +749,11 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
       
       xdn = [qn;vn];
       df =[];
+      
+     %plugging the forward dynamics into the inverse dynamics, given A and
+     %v, plug into InverseDynamics(), I need velocity at this timestep and
+     %the next timestep.  That's a little tricky.  Also you might want to
+     %take a look at the one legged hopper.  It's far more meaningful.  
     end
 
       

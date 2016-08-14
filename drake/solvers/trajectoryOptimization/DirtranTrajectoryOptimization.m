@@ -123,6 +123,13 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
       df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
     end
     
+%     
+%     function f = midpoint_running_fun(obj,running_handle,h,x0,x1,u0,u1)
+%       nX = obj.plant.getNumStates();
+%       nU = obj.plant.getNumInputs();
+%       f = running_handle(h,.5*(x0+x1),.5*(u0+u1));
+%     end
+    
     function [f,df] = midpoint_running_fun(obj,running_handle,h,x0,x1,u0,u1)
       nX = obj.plant.getNumStates();
       nU = obj.plant.getNumInputs();
