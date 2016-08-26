@@ -237,7 +237,7 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
     end
     
     
-    function grad = grad_log(A,b,x)
+    function grad = gradLog(obj,A,b,x)
         [m,n] = size(A);
         
         %quadratic coefficients
@@ -266,11 +266,37 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             grad = - Af'*d + (2*a(1)*diag(Au*x-bu)*Au + a(2)*Au)'*ones(size(find(~quad_log)));
         else
             d = 1./(A*x - b);
-            grad = T*c - A'*d;
+            grad = - A'*d;
         end
     end
     
+    %inverse dynamics only required in trajectory optimization so h and x
+    %are treated as TaylorVar
     function u = inverseDynamics(obj,h0,h1,h2,x0,x1,x2)
+        
+        
+        if strcmp(class(h0),'TaylorVar')
+            h0 = eval(h0);
+        end
+        
+        if strcmp(class(h0),'TaylorVar')
+            h1 = eval(h1);
+        end
+        
+        if strcmp(class(h0),'TaylorVar')
+            h2 = eval(h2);
+        end
+        
+        if strcmp(class(h0),'TaylorVar')
+            x0 = eval(x0);
+        end
+        if strcmp(class(h0),'TaylorVar')
+            x1 = eval(x1);
+        end
+        
+        if strcmp(class(h0),'TaylorVar')
+            x2 = eval(x2);
+        end
         
         if obj.twoD
             num_d = 2;
@@ -334,7 +360,11 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         
         if isempty(active)
             %you will have to block decompose the dynamics as Scott said
-            u = B/(H*x0_ddot + C);
+            if isempty(B)
+                u = 0;
+            else
+                u = B/(H*x0_ddot + C); 
+            end
         else
             
             
@@ -423,7 +453,9 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             end
             for i=1:nL
                 idx = num_active*dim + i;
-                Ain(i+num_active,:) = V;
+                g = zeros(1,size(v,1));
+                g(idx) = 1;
+                Ain(i+num_active,:) = g'*V;
                 bin(i+num_active) = v_min(i+num_active);
             end
             
@@ -438,13 +470,18 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             
             
             %takes gradient of the log barrier of constraints Ax > b
-            dv = grad_log(Ain,bin,v);
+            dv = obj.gradLog(Ain,bin,V'*v);
             %note this inconsistency, c does not incorporate knowledge of
             %pyramid basis change but is passed in as V'*c.  This is bad
             %form because Q is passed in with bases changed.
             %we've overloaded c, I think all notation should stick to the
             %paper.  
-            k = V'*(v + A*dv);
+            
+            %the V, convention is confusing.  Basically any computation of
+            %derivatives will need the input to be in pyramid basis.  And
+            %it will return an answer in pyramid basis.  So we convert
+            %accordingly. V changes basis into pyramid.  
+            k = V'*(v + A*V*dv);
             
             %Here's my understanding
             %take every term in the paper, replace J with J*vToqdot and we
@@ -458,11 +495,15 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             f0 = 1*ones(1,size(Q,2));
             lb = zeros(num_params,1);
             ub = lambda_ub;
-            fastIPmex(Q,k,Ain,bin,ub,lb,f0');
+            result_ip = fastIPmex(Q,k,Ain,bin,ub,lb,f0');
             f = V*(result_ip + w_active);
             
             %you're going to have to decompose this
-            u = B/(H*x0_ddot + C - vToqdot'*J'*f);
+            if isempty(B)
+                u = 0;
+            else 
+                u = B/(H*x0_ddot + C - vToqdot'*J'*f);
+            end
         end
         
     end

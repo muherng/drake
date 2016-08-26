@@ -26,27 +26,25 @@ v.drawWrapper(0,x0);
 
 
 %You should support this functionality
-% N = 20;
-% cto = ContactTrajectoryOptimization(p,N,[0 4])
-% cto = cto.addStateConstraint(ConstantConstraint(start(1:24)),1);
-% cto = cto.addRunningCost(@cost);
-% 
-%     function [g,dg] = cost(dt,x,u)
-%         R = 1;
-%         g = sum((R*u).*u,1);
-%         dg = [zeros(1,1+size(x,1)),2*u'*R];
-%     end
+N = 20;
+cto = ContactTrajectoryOptimization(p,N,[0 4])
+cto = cto.addStateConstraint(ConstantConstraint(start(1:24)),1);
+cto = cto.addRunningCost(@cost);
 
+    function [g,dg] = cost(dt,x,u)
+        R = 1;
+        g = sum((R*u).*u,1);
+        dg = [zeros(1,1+size(x,1)),2*u'*R];
+    end
+tf0 = 0.5;
+traj_init.x = PPTrajectory(foh([0,tf0],[double(start(1:24)),double(start(1:24))]));
 
-% cto = cto.addFinalCost(@finalCost);
-% traj_init.x = PPTrajectory(foh([0,tf0],[double(x0),double(xf)]));
-%
-% for attempts=1:10
-%     tic
-%     [xtraj,utraj,z,F,info] = prog.solveTraj(tf0,traj_init);
-%     toc
-%     if info==1, break; end
-% end
+ for attempts=1:10
+     tic
+     [xtraj,utraj,z,F,info] = cto.solveTraj(tf0,traj_init);
+     toc
+     if info==1, break; end
+ end
 
 
 

@@ -29,10 +29,11 @@ classdef DirectTrajectoryOptimization < NonlinearProgram
     u_inds  % m x N indices for time
     dynamic_constraints = {};
     constraints = {};
+    TSRBM; %a time stepping rigid body manipulator
   end
 
   methods
-    function obj = DirectTrajectoryOptimization(plant,N,durations,options)
+    function obj = DirectTrajectoryOptimization(plant,N,durations,options,TSRBM)
     % function obj =
     % DirectTrajectoryOptimization(plant,initial_cost,running_cost,final_cost,...
     % t_init,traj_init,T_span,constraints, options)
@@ -50,6 +51,12 @@ classdef DirectTrajectoryOptimization < NonlinearProgram
       if nargin < 4
         options = struct();
       end
+      
+      
+      if nargin < 5
+          disp('still working');
+          TSRBM = [];
+      end
 
       if ~isfield(options,'time_option')
         options.time_option = 1;
@@ -64,7 +71,7 @@ classdef DirectTrajectoryOptimization < NonlinearProgram
       obj = obj@NonlinearProgram(0);
       obj.options = options;
       obj.plant = plant;
-
+      obj.TSRBM = TSRBM;
       obj = obj.setupVariables(N);
 
       % Construct total time linear constraint
