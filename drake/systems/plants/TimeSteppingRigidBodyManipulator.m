@@ -262,8 +262,13 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             Au = A(find(~quad_log),:);
             bf = b(find(quad_log));
             bu = b(find(~quad_log));
-            d = 1./(Af*x - bf);
-            grad = - Af'*d + (2*a(1)*diag(Au*x-bu)*Au + a(2)*Au)'*ones(size(find(~quad_log)));
+            if (isempty(Af))
+                afd = zeros(n,1);
+            else 
+                d = 1./(Af*x - bf);
+                afd = Af'*d;
+            end
+            grad = - afd + (2*a(1)*diag(Au*x-bu)*Au + a(2)*Au)'*ones(size(find(~quad_log)));
         else
             d = 1./(A*x - b);
             grad = - A'*d;
@@ -272,31 +277,28 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
     
     %inverse dynamics only required in trajectory optimization so h and x
     %are treated as TaylorVar
-    function u = inverseDynamics(obj,h0,h1,h2,x0,x1,x2)
+    function [u,f,J,H,B,C] = inverseDynamics(obj,h0,h1,x0,x1,x2)
         
         
         if strcmp(class(h0),'TaylorVar')
             h0 = eval(h0);
         end
         
-        if strcmp(class(h0),'TaylorVar')
+        if strcmp(class(h1),'TaylorVar')
             h1 = eval(h1);
         end
         
-        if strcmp(class(h0),'TaylorVar')
-            h2 = eval(h2);
-        end
-        
-        if strcmp(class(h0),'TaylorVar')
+        if strcmp(class(x0),'TaylorVar')
             x0 = eval(x0);
         end
-        if strcmp(class(h0),'TaylorVar')
+        if strcmp(class(x1),'TaylorVar')
             x1 = eval(x1);
         end
         
-        if strcmp(class(h0),'TaylorVar')
+        if strcmp(class(x2),'TaylorVar')
             x2 = eval(x2);
         end
+        
         
         if obj.twoD
             num_d = 2;
@@ -308,14 +310,23 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         num_q = obj.manip.getNumPositions;
         %v=x(num_q+(1:obj.manip.getNumVelocities));
         
-        x0_dot = (x1 - x0)/(h1 - h0);
-        x1_dot = (x2 - x1)/(h2 - h1);
-        h = h1 - h0;
+        x0_dot = (x1 - x0)/h0;
+        x1_dot = (x2 - x1)/h1;
+        h = h0;
         
         kinsol = doKinematics(obj, x0);
         vToqdot = obj.manip.vToqdot(kinsol);
         
         [H,C,B] = manipulatorDynamics(obj.manip,x0,x0_dot);
+        
+        %we're just returning here
+        u = 0;
+        J = zeros(size(x0))';
+        f = 0;
+        B = zeros(size(x0));
+        
+        return;
+        
         
         [phiC,normal,V,n,xA,xB,idxA,idxB] = getContactTerms(obj,x0,kinsol);
         num_c = length(phiC);
@@ -358,10 +369,14 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         phi = [phiC;phiL];
         x0_ddot = (x1_dot - x0_dot)/(h1 - h0);
         
+        
         if isempty(active)
             %you will have to block decompose the dynamics as Scott said
             if isempty(B)
                 u = 0;
+                J = zeros(size(x0))';
+                f = 0;
+                B = zeros(size(x0));
             else
                 u = B/(H*x0_ddot + C); 
             end
@@ -448,10 +463,16 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             bin = zeros(num_active+nL,1);
             for i=1:num_active
                 idx = (i-1)*dim + (1:dim);
-                Ain(i,:) = normal(:,i)'*V;
+                g = zeros(size(normal,1),size(V,1));
+                for j = 1:size(idx)
+                    g(j,idx(j)) = 1;
+                end
+                Ain(i,:) = normal(:,i)'*g*V;
                 bin(i) = v_min(i);
             end
             for i=1:nL
+                %if idx is a vector, than replicate the code in the above
+                %for loop.  
                 idx = num_active*dim + i;
                 g = zeros(1,size(v,1));
                 g(idx) = 1;
@@ -501,6 +522,9 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             %you're going to have to decompose this
             if isempty(B)
                 u = 0;
+                J = zeros(size(x0))';
+                f = 0;
+                B = zeros(size(x0));
             else 
                 u = B/(H*x0_ddot + C - vToqdot'*J'*f);
             end

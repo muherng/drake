@@ -26,9 +26,13 @@ v.drawWrapper(0,x0);
 
 
 %You should support this functionality
-N = 20;
-cto = ContactTrajectoryOptimization(p,N,[0 4])
+N = 50;
+cto = ContactTrajectoryOptimization(p,N,[0.5 1.5]);
 cto = cto.addStateConstraint(ConstantConstraint(start(1:24)),1);
+xtraj = p.simulate([0 1.0],x0);
+[m,n] = size(xtraj.xx);
+xf = xtraj.xx(:,n);
+cto = cto.addStateConstraint(ConstantConstraint(xf),N);
 cto = cto.addRunningCost(@cost);
 
     function [g,dg] = cost(dt,x,u)
@@ -36,22 +40,25 @@ cto = cto.addRunningCost(@cost);
         g = sum((R*u).*u,1);
         dg = [zeros(1,1+size(x,1)),2*u'*R];
     end
-tf0 = 0.5;
-traj_init.x = PPTrajectory(foh([0,tf0],[double(start(1:24)),double(start(1:24))]));
+tf0 = 1.0;
+traj_init.x = PPTrajectory(foh([0,tf0],[double(start(1:24)),double(xf)]));
 
  for attempts=1:10
      tic
      [xtraj,utraj,z,F,info] = cto.solveTraj(tf0,traj_init);
      toc
-     if info==1, break; end
+     if info==1 || info == 3, break; end
  end
 
 
 
-xtraj = p.simulate([0 0.5],x0);
-for i = 1:size(xtraj.xx,2) - 2
-    p.inverseDynamics(xtraj.tt(i), xtraj.tt(i+1), xtraj.tt(i+2), xtraj.xx(1:12,i), xtraj.xx(1:12,i+1), xtraj.xx(1:12,i+2));
-end
+%xtraj = p.simulate([0 0.5],x0);
+
+
+
+% for i = 1:size(xtraj.xx,2) - 2
+%     p.inverseDynamics(xtraj.tt(i), xtraj.tt(i+1), xtraj.tt(i+2), xtraj.xx(1:12,i), xtraj.xx(1:12,i+1), xtraj.xx(1:12,i+2));
+% end
 
 v.playback(xtraj);
 end
