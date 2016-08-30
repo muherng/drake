@@ -310,8 +310,14 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         num_q = obj.manip.getNumPositions;
         %v=x(num_q+(1:obj.manip.getNumVelocities));
         
-        x0_dot = (x1 - x0)/h0;
-        x1_dot = (x2 - x1)/h1;
+        %x0_dot = (x1 - x0)/h0;
+        %x1_dot = (x2 - x1)/h1;
+        [m,n] = size(x0);
+        x0_dot = x0(m/2+1:m);
+        x1_dot = x1(m/2+1:m);
+        x0 = x0(1:m/2);
+        x1 = x1(1:m/2);
+        
         h = h0;
         
         kinsol = doKinematics(obj, x0);
