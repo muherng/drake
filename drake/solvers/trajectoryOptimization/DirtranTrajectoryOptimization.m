@@ -25,7 +25,8 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
         options = struct();
       end
       if ~isfield(options,'integration_method')
-        options.integration_method = DirtranTrajectoryOptimization.MIDPOINT;
+        %options.integration_method = DirtranTrajectoryOptimization.MIDPOINT;
+        options.integration_method = DirtranTrajectoryOptimization.FORWARD_EULER;
       end
       
       obj = obj@DirectTrajectoryOptimization(plant,N,duration,options);
@@ -99,46 +100,61 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
         obj = obj.addCost(running_cost,inds_i);
       end
     end
+    
+    function f = forward_constraint_fun(obj,h,x0,x1,u)
+        nX = obj.plant.getNumStates();
+        [x_next,~] = obj.plant.update(0,.5*(x0 + x1),u);
+        f = (x1 - x0) - h*(x_next - .5*(x0 + x1))/obj.plant.timestep;
+        %df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
+    end
+    
   end
   
+
+  
   methods (Access=protected)
-    function [f,df] = forward_constraint_fun(obj,h,x0,x1,u) 
-        
-        
-      nX = obj.plant.getNumStates();
-      [xdot,dxdot] = obj.plant.dynamics(0,x0,u);
-      f = x1 - x0 - h*xdot;
-      df = [-xdot (-eye(nX) - h*dxdot(:,2:1+nX)) eye(nX) -h*dxdot(:,nX+2:end)];
-    end
-    
-    function [f,df] = backward_constraint_fun(obj,h,x0,x1,u)
-      nX = obj.plant.getNumStates();
-      [xdot,dxdot] = obj.plant.dynamics(0,x1,u);
-      f = x1 - x0 - h*xdot;
-      df = [-xdot -eye(nX) (eye(nX) - h*dxdot(:,2:1+nX)) -h*dxdot(:,nX+2:end)];
-    end
-    
-    function [f,df] = midpoint_constraint_fun(obj,h,x0,x1,u0,u1)
-      nX = obj.plant.getNumStates();
-      [xdot,dxdot] = obj.plant.dynamics(0,.5*(x0+x1),.5*(u0+u1));
-      f = x1 - x0 - h*xdot;
-      df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
-    end
-    
-%     
-%     function f = midpoint_running_fun(obj,running_handle,h,x0,x1,u0,u1)
-%       nX = obj.plant.getNumStates();
-%       nU = obj.plant.getNumInputs();
-%       f = running_handle(h,.5*(x0+x1),.5*(u0+u1));
-%     end
-    
-    function [f,df] = midpoint_running_fun(obj,running_handle,h,x0,x1,u0,u1)
-      nX = obj.plant.getNumStates();
-      nU = obj.plant.getNumInputs();
-      [f,dg] = running_handle(h,.5*(x0+x1),.5*(u0+u1));
+      %     function [f,df] = forward_constraint_fun(obj,h,x0,x1,u)
+      %
+      %
+      %       nX = obj.plant.getNumStates();
+      %       [xdot,dxdot] = obj.plant.dynamics(0,x0,u);
+      %       f = x1 - x0 - h*xdot;
+      %       df = [-xdot (-eye(nX) - h*dxdot(:,2:1+nX)) eye(nX) -h*dxdot(:,nX+2:end)];
+      %     end
       
-      df = [dg(:,1) .5*dg(:,2:1+nX) .5*dg(:,2:1+nX) .5*dg(:,2+nX:1+nX+nU) .5*dg(:,2+nX:1+nX+nU)];
-    end
-    
+      function [f,df] = backward_constraint_fun(obj,h,x0,x1,u)
+          nX = obj.plant.getNumStates();
+          [xdot,dxdot] = obj.plant.dynamics(0,x1,u);
+          f = x1 - x0 - h*xdot;
+          df = [-xdot -eye(nX) (eye(nX) - h*dxdot(:,2:1+nX)) -h*dxdot(:,nX+2:end)];
+      end
+      
+      
+      %making some modifications to midpoint_constraint_fun
+      %     function [f,df] = midpoint_constraint_fun(obj,h,x0,x1,u0,u1)
+      %       nX = obj.plant.getNumStates();
+      %       [xdot,dxdot] = obj.plant.dynamics(0,.5*(x0+x1),.5*(u0+u1));
+      %       f = x1 - x0 - h*xdot;
+      %       df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
+      %     end
+      
+      
+      
+      
+      %
+      %     function f = midpoint_running_fun(obj,running_handle,h,x0,x1,u0,u1)
+      %       nX = obj.plant.getNumStates();
+      %       nU = obj.plant.getNumInputs();
+      %       f = running_handle(h,.5*(x0+x1),.5*(u0+u1));
+      %     end
+      
+      function [f,df] = midpoint_running_fun(obj,running_handle,h,x0,x1,u0,u1)
+          nX = obj.plant.getNumStates();
+          nU = obj.plant.getNumInputs();
+          [f,dg] = running_handle(h,.5*(x0+x1),.5*(u0+u1));
+          
+          df = [dg(:,1) .5*dg(:,2:1+nX) .5*dg(:,2:1+nX) .5*dg(:,2+nX:1+nX+nU) .5*dg(:,2+nX:1+nX+nU)];
+      end
+      
   end
 end

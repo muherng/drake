@@ -61,7 +61,8 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             n_vars = 2 + 3/2*nX;
             cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.forward_constraint_fun);
             
-            
+            %n_vars = 2 + 3/2*nX;
+            %cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.forward_constraint_fun);
             
             %we're only minimizing over states not over
             %velocities/derivatives 
@@ -186,12 +187,16 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             f = running_handle(h0,x0,u);
         end
         
-        function [f,df] = forward_constraint_fun(obj,h0,h1,x0,x1,x2)
-            try
-                [~,cf,J,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
-            catch
-                [~,cf,J,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
-            end
+        function f = forward_constraint_fun(obj,h0,h1,x0,x1,x2)
+            x0_dot = (x1 - x0)/h0;
+            x1_dot = (x2 - x1)/h1;
+            
+            [H,C,B] = manipulatorDynamics(obj.TSRBM.getManipulator(),x0,x0_dot);
+%             try
+%                 [~,~,~,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
+%             catch
+%                 [~,~,~,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
+%             end
             
             %[~,~,~,~,~,~,h0,h1,x0,x1,x2] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
             %we need the dynamics including contact forces
@@ -203,9 +208,7 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             
             
             %f = (x2 - x1)/h1 - ((x1 - x0)/h0 + H\(B*u - C)*h0 + J'*cf);
-            %f = (x2 - x1)/h1 - ((x1 - x0)/h0 + (H\(-C))*h0 + J'*cf);
-            f = (x1 - x0) - h*x0_dot;
-            df = x1_dot - (x0_dot + (H\(-C))*h0 + J'*cf);
+            f = (x2 - x1)/h1 - ((x1 - x0)/h0 + (H\(-C))*h0);
         end
         
         function f = finite_difference(obj,h0,x0,x0_dot,x1)
