@@ -29,9 +29,9 @@ v.drawWrapper(0,x0);
 
 %You should support this functionality
 N = 20;
-cto = DirtranTrajectoryOptimization(p,N,[0.0 1.0]);
+cto = ContactTrajectoryOptimization(p,N,[0.0 2.0]);
 cto = cto.addStateConstraint(ConstantConstraint(start(1:24)),1);
-xtraj = p.simulate([0.0 1.0],x0);
+xtraj = p.simulate([0.0 2.0],x0);
 x_old = xtraj;
 
 v.playback(xtraj);
@@ -47,7 +47,7 @@ xf = xtraj.xx(:,n);
         g = sum((R*u).*u,1);
         dg = [zeros(1,1+size(x,1)),2*u'*R];
     end
-tf0 = 1.0;
+tf0 = 2.0;
 traj_init.x = PPTrajectory(foh([0,tf0],[double(start),double(xf)]));
 
  for attempts=1:10
@@ -76,7 +76,7 @@ traj_init.x = PPTrajectory(foh([0,tf0],[double(start),double(xf)]));
      x0 = xtraj.pp.coefs(a+1:a+24,2);
      x1 = xtraj.pp.coefs(b+1:b+24,2);
      h = xtraj.pp.breaks(2);
-     f = cto.forward_constraint_fun(h,x0,x1,zeros(0,1));
+     %f = cto.forward_constraint_fun(h,x0,x1,zeros(0,1));
  end
 
 %xtraj = p.simulate([0 0.5],x0);

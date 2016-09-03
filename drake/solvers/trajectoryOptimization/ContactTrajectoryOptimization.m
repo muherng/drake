@@ -19,12 +19,15 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             % need to plug this into reconstruct trajectory.
             %I hope it doesn't take anymore time to include all the
             %variables that don't do anything.
-            options = struct();
-            obj = obj@DirectTrajectoryOptimization(TSRBM.getManipulator(),N,duration,options,TSRBM);
+            
+            if nargin < 4
+                options = struct();
+            end
+            obj = obj@DirectTrajectoryOptimization(TSRBM,N,duration,options);
             %obj.TSRBM = manipulator;
             %I need to add in the dynamics after I add in the manipulator.
             %I need to add in the manipulator after the call to direct
-            %trajectory optimization by matlab syntax.  
+            %trajectory optimization by matlab syntax.
         end
         
         
@@ -40,7 +43,8 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             nX = manip.getNumStates();
             nU = manip.getNumInputs();
             N = obj.N;
-            num_pos = manip.num_positions;
+            %num_pos = manip.num_positions;
+            num_pos = nX/2;
             
             %constraints = cell(N-1,1);
             %dyn_inds = cell(N-1,1);
@@ -150,7 +154,7 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
         function xtraj = reconstructStateTrajectory(obj,z)
             % default behavior is to use first order holds, but this can be
             % re-implemented by a subclass.
-            manip = obj.plant;
+            manip = obj.plant.getManipulator();
             num_pos = manip.num_positions;
             
             t = [0; cumsum(z(obj.h_inds))];
@@ -188,10 +192,25 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
         end
         
         function f = forward_constraint_fun(obj,h0,h1,x0,x1,x2)
-            x0_dot = (x1 - x0)/h0;
-            x1_dot = (x2 - x1)/h1;
+            try
+                x0_dot = (x1 - x0)/h0;
+                x1_dot = (x2 - x1)/h1;
+            catch
+                disp('YOU CAN DO IT');
+                f = zeros(12,1);
+                return;
+            end
             
-            [H,C,B] = manipulatorDynamics(obj.TSRBM.getManipulator(),x0,x0_dot);
+            x0_full = [x0;x0_dot];
+            x1_full = [x1;x1_dot];
+            u = zeros(0,1);
+            
+            [x_next,~] = obj.plant.update(0,.5*(x0_full + x1_full),u);
+            %f = (x1_full - x0_full) - h0*(x_next - .5*(x0_full + x1_full))/obj.plant.timestep;
+            
+            f = x1 - x1;
+            
+            %[H,C,B] = manipulatorDynamics(obj.TSRBM.getManipulator(),x0,x0_dot);
 %             try
 %                 [~,~,~,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
 %             catch
@@ -208,12 +227,13 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             
             
             %f = (x2 - x1)/h1 - ((x1 - x0)/h0 + H\(B*u - C)*h0 + J'*cf);
-            f = (x2 - x1)/h1 - ((x1 - x0)/h0 + (H\(-C))*h0);
+            %f = (x2 - x1)/h1 - ((x1 - x0)/h0 + (H\(-C))*h0);
         end
         
         function f = finite_difference(obj,h0,x0,x0_dot,x1)
             %f = (x1 - x0)/h0 - x0_dot;
             f = (x1 - x0) - h0*x0_dot;
+            %f = x1 - x1;
         end
     end
     %end
