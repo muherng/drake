@@ -19,7 +19,8 @@
 using namespace std;
 using namespace Eigen;
 
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {  
+     
   if (nrhs < 5)
     mexErrMsgTxt(
         "usage: "

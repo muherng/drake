@@ -26,7 +26,7 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
       end
       if ~isfield(options,'integration_method')
         %options.integration_method = DirtranTrajectoryOptimization.MIDPOINT;
-        options.integration_method = DirtranTrajectoryOptimization.FORWARD_EULER;
+        options.integration_method = DirtranTrajectoryOptimization.MIDPOINT;
       end
       
       obj = obj@DirectTrajectoryOptimization(plant,N,duration,options);
@@ -105,6 +105,9 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
         nX = obj.plant.getNumStates();
         [x_next,~] = obj.plant.update(0,.5*(x0 + x1),u);
         f = (x1 - x0) - h*(x_next - .5*(x0 + x1))/obj.plant.timestep;
+        
+        %[x_next,~] = obj.plant.update(h,x0,u);
+        %f = x1 - x_next;
         %df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
     end
     
@@ -131,12 +134,12 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
       
       
       %making some modifications to midpoint_constraint_fun
-      %     function [f,df] = midpoint_constraint_fun(obj,h,x0,x1,u0,u1)
-      %       nX = obj.plant.getNumStates();
-      %       [xdot,dxdot] = obj.plant.dynamics(0,.5*(x0+x1),.5*(u0+u1));
-      %       f = x1 - x0 - h*xdot;
-      %       df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
-      %     end
+          function [f,df] = midpoint_constraint_fun(obj,h,x0,x1,u0,u1)
+            nX = obj.plant.getNumStates();
+            [xdot,dxdot] = obj.plant.dynamics(0,.5*(x0+x1),.5*(u0+u1));
+            f = x1 - x0 - h*xdot;
+            df = [-xdot (-eye(nX) - .5*h*dxdot(:,2:1+nX)) (eye(nX)- .5*h*dxdot(:,2:1+nX)) -.5*h*dxdot(:,nX+2:end) -.5*h*dxdot(:,nX+2:end)];
+          end
       
       
       

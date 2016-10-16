@@ -283,8 +283,7 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         x1_dot = (x2 - x1)/h1;
         
         [H,C,B] = manipulatorDynamics(obj.manip,x0,x0_dot);
-        return;
-        
+
         if strcmp(class(h0),'TaylorVar')
             h0 = eval(h0);
         end
@@ -377,13 +376,14 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
         if isempty(active)
             %you will have to block decompose the dynamics as Scott said
             if isempty(B)
-                u = 0;
+                u = zeros(0,1);
                 J = zeros(size(x0))';
                 f = 0;
                 B = zeros(size(x0));
             else
                 u = B/(H*x0_ddot + C); 
             end
+            return;
         else
             
             
@@ -524,17 +524,15 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
             f = V*(result_ip + w_active);
             
             %you're going to have to decompose this
-%             if isempty(B)
-%                 u = 0;
-%                 %J = zeros(size(x0))';
-%                 %f = 0;
-%                 B = zeros(size(x0));
-%             else 
-%                 u = B/(H*x0_ddot + C - vToqdot'*J'*f);
-%             end
+            if isempty(B)
+                u = zeros(0,1);
+                B = zeros(size(x0));
+            else 
+                u = B/(H*x0_ddot + C - vToqdot'*J'*f);
+            end
             %try out just outputting the J and f as is.  
-            u = 0;
-            B = zeros(size(x0));
+            %u = 0;
+            %B = zeros(size(x0));
             %J = zeros(size(f,1),size(x0,1));
         end
         
@@ -555,18 +553,23 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
       % q_{k+1} = q_{k} + qd_{k+1}*h;
       % qd_{k+1} = qd_{k} + H^{-1}*(B*u-C)*h + J'*f;
       
+      
+      %I observe that commenting this out allows dirtran to succeed.
+      %Including it allows contact trajectory optimization to succeed.  The
+      %reasons for this are entirely opaque to me.  
 %       if strcmp(class(x),'TaylorVar')
 %           x = eval(x);
-%       else
-%           h = obj.timestep;
 %       end
+
+      
 
       if max(abs(x)) > 100
         disp('NO BRICK SPINS THAT FAST');
       end
 
-      h = obj.timestep;
-        
+      
+      h = obj.timestep; 
+      
       if obj.twoD
         num_d = 2;  
       else
@@ -591,9 +594,22 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
       qdn = vToqdot*vn;
       qn = q + qdn*h;
       
-      if (false)
+      
+      %when all the contact code runs, even when there are no contacts, get
+      %contact terms breaks on taylor vars.  Evaluating x at the top of
+      %update convex gives us exit flag 41.  So we must evaluate the
+      %contact code and avoid the exitflag error.  
+      if (true)
           
-          [phiC,normal,V,n,xA,xB,idxA,idxB] = getContactTerms(obj,q,kinsol);
+          if strcmp(class(x),'TaylorVar')
+              q_eval = eval(q);
+              kinsol_eval = doKinematics(obj,q_eval);
+          else
+              q_eval = q;
+              kinsol_eval = kinsol;
+          end
+          
+          [phiC,normal,V,n,xA,xB,idxA,idxB] = getContactTerms(obj,q_eval,kinsol_eval);
           num_c = length(phiC);
           
           if nargin<5
@@ -609,22 +625,40 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
           Aidx = idxA(active);
           Bidx = idxB(active);
           
-          JA = [];
-          world_pts = [];
-          for i=1:length(Aidx)
-              [pp,J_] = forwardKin(obj.manip,kinsol,Aidx(i),Apts(:,i));
-              JA = [JA; J_];
-              world_pts = [world_pts, pp];
+          
+          try
+              JA = [];
+              world_pts = [];
+              for i=1:length(Aidx)
+                  [pp,J_] = forwardKin(obj.manip,kinsol,Aidx(i),Apts(:,i));
+                  JA = [JA; J_];
+                  world_pts = [world_pts, pp];
+              end
+              
+              JB = [];
+              for i=1:length(Bidx)
+                  [~,J_] = forwardKin(obj.manip,kinsol,Bidx(i),Bpts(:,i));
+                  JB = [JB; J_];
+              end
+              
+              J = JA-JB;
+          catch
+              JA = [];
+              world_pts = [];
+              for i=1:length(Aidx)
+                  [pp,J_] = forwardKin(obj.manip,kinsol,Aidx(i),Apts(:,i));
+                  JA = [JA; J_];
+                  world_pts = [world_pts, pp];
+              end
+              
+              JB = [];
+              for i=1:length(Bidx)
+                  [~,J_] = forwardKin(obj.manip,kinsol,Bidx(i),Bpts(:,i));
+                  JB = [JB; J_];
+              end
+              
+              J = JA-JB;
           end
-          
-          JB = [];
-          for i=1:length(Bidx)
-              [~,J_] = forwardKin(obj.manip,kinsol,Bidx(i),Bpts(:,i));
-              JB = [JB; J_];
-          end
-          
-          J = JA-JB;
-          
           [phiL,JL] = obj.manip.jointLimitConstraints(q);
           try
               possible_limit_indices = (phiL + h*JL*vToqdot*v) < obj.active_threshold;
@@ -643,6 +677,7 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
               qdn = vToqdot*vn;
               qn = q + qdn*h;
           else
+              %disp('GIRL, HOWD THIS HAPPEN?');
               num_active = length(active);
               num_beta = num_active*num_d; % coefficients for friction poly
               
@@ -858,9 +893,13 @@ classdef TimeSteppingRigidBodyManipulator < DrakeSystem
 
       
     function [xdn,df] = update(obj,t,x,u)
-      
+        
       if obj.update_convex
-        [xdn,df] = updateConvex(obj,t,x,u);
+        if nargin >= 5
+            [xdn,df] = updateConvex(obj,t,x,u);
+        else
+            [xdn,df] = updateConvex(obj,t,x,u);
+        end
         return;
       end
       

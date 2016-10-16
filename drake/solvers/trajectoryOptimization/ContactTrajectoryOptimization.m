@@ -56,14 +56,15 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             m = size(obj.x_inds);
             n_vars = 1 + 3/2*nX;
             cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.finite_difference);
+            cnstr.grad_method = 'numerical';
             dyn_inds{1} = {obj.h_inds(1);obj.x_inds(1:num_pos,1);obj.x_inds(num_pos+1:m,1);obj.x_inds(1:num_pos,2)};
             constraints{1} = cnstr;
-            
             obj = obj.addConstraint(constraints{1},dyn_inds{1});
             
             %you'll have to change these lines 
             n_vars = 2 + 3/2*nX;
             cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.forward_constraint_fun);
+            cnstr.grad_method = 'numerical';
             
             %n_vars = 2 + 3/2*nX;
             %cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.forward_constraint_fun);
@@ -192,23 +193,21 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
         end
         
         function f = forward_constraint_fun(obj,h0,h1,x0,x1,x2)
-            try
-                x0_dot = (x1 - x0)/h0;
-                x1_dot = (x2 - x1)/h1;
-            catch
-                disp('YOU CAN DO IT');
-                f = zeros(12,1);
-                return;
-            end
+            [m,n] = size(x0);
+            
+            x0_dot = (x1 - x0)/h0;
+            x1_dot = (x2 - x1)/h1;
             
             x0_full = [x0;x0_dot];
             x1_full = [x1;x1_dot];
             u = zeros(0,1);
             
-            [x_next,~] = obj.plant.update(0,.5*(x0_full + x1_full),u);
-            %f = (x1_full - x0_full) - h0*(x_next - .5*(x0_full + x1_full))/obj.plant.timestep;
+            %[u,~,~,~,~,~] = obj.plant.inverseDynamics(h0,h1,x0,x1,x2);
             
-            f = x1 - x1;
+            [x_next,~] = obj.plant.update(0,.5*(x0_full + x1_full),u);
+            f = (x1_dot - x0_dot) - h0*(x_next(m+1:2*m) - .5*(x0_dot + x1_dot))/obj.plant.timestep;
+            
+            %f = x1 - x1;
             
             %[H,C,B] = manipulatorDynamics(obj.TSRBM.getManipulator(),x0,x0_dot);
 %             try
