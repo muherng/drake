@@ -57,24 +57,25 @@ classdef Manipulator < DrakeSystem
         Hinv = inv(H);
 
         if (obj.num_u>0)
-          vdot = Hinv*(B*u-C);
-          dtau = matGradMult(dB,u) - dC;
-          dvdot = [zeros(obj.num_velocities,1),...
-            -Hinv*matGradMult(dH(:,1:obj.num_positions),vdot) + Hinv*dtau(:,1:obj.num_positions),...
-            +Hinv*dtau(:,1+obj.num_positions:end), Hinv*B];
+            vdot = Hinv*(B*u-C);
+            dtau = matGradMult(dB,u) - dC;
+            dvdot = [zeros(obj.num_velocities,1),...
+                -Hinv*matGradMult(dH(:,1:obj.num_positions),vdot) + Hinv*dtau(:,1:obj.num_positions),...
+                +Hinv*dtau(:,1+obj.num_positions:end), Hinv*B];
         else
-          vdot = -Hinv*C;
-          dvdot = [zeros(obj.num_velocities,1),...
-            Hinv*(-matGradMult(dH(:,1:obj.num_positions),vdot) - dC(:,1:obj.num_positions)),...
-            Hinv*(-dC(:,obj.num_positions+1:end))];
+            vdot = -Hinv*C;
+            dvdot = [zeros(obj.num_velocities,1),...
+                Hinv*(-matGradMult(dH(:,1:obj.num_positions),vdot) - dC(:,1:obj.num_positions)),...
+                Hinv*(-dC(:,obj.num_positions+1:end))];
         end
-
+        
         kinsol = obj.doKinematics(q, [], struct('compute_gradients', true));
         [VqInv,dVqInv] = vToqdot(obj,kinsol);
         xdot = [VqInv*v;vdot];
         dxdot = [...
-          zeros(obj.num_positions,1), matGradMult(dVqInv, v), VqInv, zeros(obj.num_positions,obj.num_u);
-          dvdot];
+            zeros(obj.num_positions,1), matGradMult(dVqInv, v), VqInv, zeros(obj.num_positions,obj.num_u);
+            dvdot];
+        
       else
         [H,C,B] = manipulatorDynamics(obj,q,v);
         Hinv = inv(H);

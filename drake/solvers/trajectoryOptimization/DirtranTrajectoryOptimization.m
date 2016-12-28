@@ -25,7 +25,6 @@ classdef DirtranTrajectoryOptimization < DirectTrajectoryOptimization
         options = struct();
       end
       if ~isfield(options,'integration_method')
-        %options.integration_method = DirtranTrajectoryOptimization.MIDPOINT;
         options.integration_method = DirtranTrajectoryOptimization.MIDPOINT;
       end
       

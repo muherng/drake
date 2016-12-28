@@ -56,6 +56,7 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             m = size(obj.x_inds);
             n_vars = 1 + 3/2*nX;
             cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.finite_difference);
+            %once derivatives are implemented, perhaps remove this line
             cnstr.grad_method = 'numerical';
             dyn_inds{1} = {obj.h_inds(1);obj.x_inds(1:num_pos,1);obj.x_inds(num_pos+1:m,1);obj.x_inds(1:num_pos,2)};
             constraints{1} = cnstr;
@@ -63,7 +64,9 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
             
             %you'll have to change these lines 
             n_vars = 2 + 3/2*nX;
-            cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.forward_constraint_fun);
+            %cnstr = FunctionHandleConstraint(zeros(nX/2,1),zeros(nX/2,1),n_vars,@obj.forward_constraint_fun);
+            cnstr = FunctionHandleConstraint(zeros(nX,1),zeros(nX,1),n_vars,@obj.forward_constraint_fun);
+            %once derivatives are implemented, perhaps remove this line
             cnstr.grad_method = 'numerical';
             
             %n_vars = 2 + 3/2*nX;
@@ -194,39 +197,32 @@ classdef ContactTrajectoryOptimization < DirectTrajectoryOptimization
         
         function f = forward_constraint_fun(obj,h0,h1,x0,x1,x2)
             [m,n] = size(x0);
+            nX = 2*m;
             
             x0_dot = (x1 - x0)/h0;
             x1_dot = (x2 - x1)/h1;
+            xmdot = .5*(x0_dot + x1_dot);
             
             x0_full = [x0;x0_dot];
             x1_full = [x1;x1_dot];
             u = zeros(0,1);
             
+            
             %[u,~,~,~,~,~] = obj.plant.inverseDynamics(h0,h1,x0,x1,x2);
             
-            [x_next,~] = obj.plant.update(0,.5*(x0_full + x1_full),u);
-            f = (x1_dot - x0_dot) - h0*(x_next(m+1:2*m) - .5*(x0_dot + x1_dot))/obj.plant.timestep;
-            
-            %f = x1 - x1;
-            
-            %[H,C,B] = manipulatorDynamics(obj.TSRBM.getManipulator(),x0,x0_dot);
-%             try
-%                 [~,~,~,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
-%             catch
-%                 [~,~,~,H,~,C] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
-%             end
-            
-            %[~,~,~,~,~,~,h0,h1,x0,x1,x2] = obj.TSRBM.inverseDynamics(h0,h1,x0,x1,x2);
-            %we need the dynamics including contact forces
-            %[xdot,dxdot] = obj.plant.dynamics(0,x0,u);
-            %f = x1 - x0 - h*xdot;
-            %df = [-xdot (-eye(nX) - h*dxdot(:,2:1+nX)) eye(nX) -h*dxdot(:,nX+2:end)];
-            %f = zeros(2*size(x0,1),1);
-            %remember to concatenate q, q_dot
+            [x_next,dxdot] = obj.plant.update(0,.5*(x0_full + x1_full),u);
+            xmdotdot = (x_next(m+1:2*m) - xmdot)/obj.plant.timestep;
+            %f = (x1_dot - x0_dot) - h0*(x_next(m+1:2*m) - .5*(x0_dot + x1_dot))/obj.plant.timestep;
+            xdot = [xmdot;xmdotdot];
+            f = (x1_full - x0_full) - h0*xdot;
             
             
-            %f = (x2 - x1)/h1 - ((x1 - x0)/h0 + H\(B*u - C)*h0 + J'*cf);
-            %f = (x2 - x1)/h1 - ((x1 - x0)/h0 + (H\(-C))*h0);
+            
+            
+            %We are doing this like Dirtran because we currently don't know
+            %how the inverse dynamics really works.  
+            %df = [-xdot (-eye(nX) - .5*h0*dxdot(:,2:1+nX)) (eye(nX)- .5*h0*dxdot(:,2:1+nX)) -.5*h0*dxdot(:,nX+2:end) -.5*h0*dxdot(:,nX+2:end)];
+            
         end
         
         function f = finite_difference(obj,h0,x0,x0_dot,x1)
